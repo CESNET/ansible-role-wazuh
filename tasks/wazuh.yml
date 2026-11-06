@@ -1,0 +1,70 @@
+- name: "check configuration variables"
+  ansible.builtin.assert:
+    that:
+      - wazuh_manager is defined
+      - wazuh_registration_password is defined
+      - wazuh_agent_group is defined
+
+- name: "require supported OS"
+  ansible.builtin.assert:
+    that: >-
+       ansible_facts['distribution'] == "Debian" and ansible_facts['distribution_major_version'] is version('12','>=')
+    fail_msg: "Only Debian 12+ is supported"
+
+- name: "create /etc/apt/keyrings"
+  ansible.builtin.file:
+    state: directory
+    path: /etc/apt/keyrings
+    owner: root
+    group: root
+    mode: '0755'
+
+# instructions at https://documentation.wazuh.com/4.14/installation-guide/wazuh-agent/wazuh-agent-package-linux.html
+- name: "add Wazuh repository key"
+  ansible.builtin.get_url:
+    url: "https://packages.wazuh.com/key/GPG-KEY-WAZUH"
+    dest: /etc/apt/keyrings/wazuh.asc
+    force: false
+
+- name: "add Wazuh repository"
+  ansible.builtin.deb822_repository:
+    name: wazuh
+    types: deb
+    architectures: amd64
+    signed_by: /etc/apt/keyrings/wazuh.asc
+    uris: "https://packages.wazuh.com/4.x/apt/"
+    suites: stable
+    components: [ "main" ]
+    state: present
+  register:
+    wazuh_repository
+
+- name: "install Wazuh agent"
+  ansible.builtin.apt:
+    update_cache: "{{ wazuh_repository.changed }}"
+    name: wazuh-agent
+    state: present
+    force_apt_get: true
+  register: wazuh_package
+  environment:
+    WAZUH_MANAGER: "{{ wazuh_manager}}"
+    WAZUH_REGISTRATION_PASSWORD: "{{ wazuh_registration_password }}"
+    WAZUH_AGENT_GROUP: "{{ wazuh_agent_group }}"
+    WAZUH_AGENT_NAME: "{{ wazuh_agent_name  }}"
+
+- name: "hold package from upgrading"
+  ansible.builtin.dpkg_selections:
+    name: wazuh-agent
+    selection: hold
+
+- name: "reload systemd"
+  ansible.builtin.systemd:
+    daemon_reload: yes
+  when: wazuh_package.changed
+
+- name: "enable wazuh-agent service and start it"
+  ansible.builtin.systemd:
+    name: wazuh-agent
+    enabled: yes
+    state: started
+

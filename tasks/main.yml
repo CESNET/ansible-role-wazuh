@@ -1,0 +1,3 @@
+- ansible.builtin.import_tasks: wazuh.yml
+  tags:
+    - wazuh
