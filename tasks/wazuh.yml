@@ -8,8 +8,17 @@
 - name: "require supported OS"
   ansible.builtin.assert:
     that: >-
-       ansible_facts['distribution'] == "Debian" and ansible_facts['distribution_major_version'] is version('12','>=')
+       ansible_facts['distribution'] == "Debian" and
+       ansible_facts['distribution_major_version'] is version('12','>=')
     fail_msg: "Only Debian 12+ is supported"
+
+- name: "install packages needed for adding signed repositories"
+  ansible.builtin.apt:
+    name:
+      - apt-transport-https
+      - curl
+      - gpg
+    state: present
 
 - name: "create /etc/apt/keyrings"
   ansible.builtin.file:
